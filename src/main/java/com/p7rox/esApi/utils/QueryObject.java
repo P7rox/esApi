@@ -1,6 +1,7 @@
 package com.p7rox.esApi.utils;
 
 
+import lombok.Getter;
 import lombok.ToString;
 
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 @ToString
+@Getter
 public class QueryObject {
 
     protected int limit;
