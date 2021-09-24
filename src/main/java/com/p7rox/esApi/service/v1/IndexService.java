@@ -8,8 +8,8 @@ import java.util.Optional;
 
 public interface IndexService {
 
-    Optional<String> getDocument(String index, String id);
+    String getDocument(String index, String id);
 
-    List<String> getDocuments(String index, Map<String,String> allParams);
+    List<Object> getDocuments(String index, Map<String,String> allParams) throws Exception;
 
 }
