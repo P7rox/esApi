@@ -19,7 +19,7 @@ public class IndexController {
     }
 
     @GetMapping(value="{index}/{id}", produces="application/json")
-    public String getProductById(@PathVariable String index, @PathVariable String id) {
-        return "Index is "+ index + " and ids is " + id;
+    public Object getProductById(@PathVariable String index, @PathVariable String id) {
+        return indexService.getDocument(index, id);
     }
 }
