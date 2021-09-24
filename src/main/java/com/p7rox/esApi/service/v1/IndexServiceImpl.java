@@ -6,6 +6,7 @@ import org.elasticsearch.action.search.*;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.index.query.IdsQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
@@ -23,8 +24,20 @@ public class IndexServiceImpl implements IndexService {
     private final RestHighLevelClient restHighLevelClient;
     private final ObjectMapper objectMapper;
 
-    public String getDocument(String index, String id) {
-        return "true";
+    public Object getDocument(String index, String id) {
+        SearchRequest searchRequest = new SearchRequest(index);
+        SearchSourceBuilder sourceBuilder = SearchSourceBuilder.searchSource();
+        IdsQueryBuilder idsQueryBuilder = QueryBuilders.idsQuery().addIds(id);
+        sourceBuilder.query(idsQueryBuilder);
+        searchRequest.source(sourceBuilder);
+        try {
+            SearchResponse response = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
+            return toDocumentList(response.getHits().getHits()).stream().findFirst().orElse(null);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     public List<Object> getDocuments(String index, Map<String, String> allParams) {
@@ -42,7 +55,7 @@ public class IndexServiceImpl implements IndexService {
             SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
             String scrollId = searchResponse.getScrollId();
             SearchHits hits = searchResponse.getHits();
-            resultList.addAll(toStringList(hits.getHits()));
+            resultList.addAll(toDocumentList(hits.getHits()));
             do {
 //                System.out.println(hits.getTotalHits().value);
 //                System.out.println(hits.getHits().length);
@@ -53,7 +66,7 @@ public class IndexServiceImpl implements IndexService {
                 SearchResponse searchScrollResponse = restHighLevelClient.scroll(scrollRequest, RequestOptions.DEFAULT);
                 scrollId = searchScrollResponse.getScrollId();
                 hits = searchScrollResponse.getHits();
-                resultList.addAll(toStringList(hits.getHits()));
+                resultList.addAll(toDocumentList(hits.getHits()));
 
             } while (scrollId != null && hits.getHits().length != 0 );
 
@@ -69,7 +82,7 @@ public class IndexServiceImpl implements IndexService {
         return null;
     }
 
-    private List<Object> toStringList(SearchHit[] searchHits) throws Exception {
+    private List<Object> toDocumentList(SearchHit[] searchHits) throws Exception {
         List<Object> stringList = new ArrayList<>();
         for (SearchHit searchHit : searchHits) {
             stringList.add(searchHit.getSourceAsMap());
