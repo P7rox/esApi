@@ -8,7 +8,7 @@ import java.util.Optional;
 
 public interface IndexService {
 
-    String getDocument(String index, String id);
+    Object getDocument(String index, String id);
 
     List<Object> getDocuments(String index, Map<String,String> allParams) throws Exception;
 
