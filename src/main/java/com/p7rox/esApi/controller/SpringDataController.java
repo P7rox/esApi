@@ -2,7 +2,7 @@ package com.p7rox.esApi.controller;
 
 
 import com.p7rox.esApi.entity.Product;
-import com.p7rox.esApi.service.SpringDataProductService;
+import com.p7rox.esApi.service.product.SpringDataProductService;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;

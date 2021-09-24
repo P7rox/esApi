@@ -1,4 +1,4 @@
-package com.p7rox.esApi.service;
+package com.p7rox.esApi.service.product;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.p7rox.esApi.entity.Product;
@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -33,7 +32,6 @@ import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
-import org.springframework.data.elasticsearch.core.index.MappingBuilder;
 import org.springframework.stereotype.Service;
 
 @Service

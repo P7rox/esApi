@@ -1,4 +1,4 @@
-package com.p7rox.esApi.service;
+package com.p7rox.esApi.service.product;
 
 import com.p7rox.esApi.entity.Product;
 import java.util.List;

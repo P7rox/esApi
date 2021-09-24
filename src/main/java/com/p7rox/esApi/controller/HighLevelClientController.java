@@ -1,7 +1,7 @@
 package com.p7rox.esApi.controller;
 
 import com.p7rox.esApi.entity.Product;
-import com.p7rox.esApi.service.HighLevelClientProductService;
+import com.p7rox.esApi.service.product.HighLevelClientProductService;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
