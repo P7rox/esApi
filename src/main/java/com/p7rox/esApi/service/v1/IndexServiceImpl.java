@@ -1,6 +1,7 @@
 package com.p7rox.esApi.service.v1;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.p7rox.esApi.utils.QueryObject;
 import lombok.RequiredArgsConstructor;
 import org.elasticsearch.action.search.*;
 import org.elasticsearch.client.RequestOptions;
@@ -13,9 +14,7 @@ import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -40,14 +39,28 @@ public class IndexServiceImpl implements IndexService {
         return null;
     }
 
-    public List<Object> getDocuments(String index, Map<String, String> allParams) {
+    public List<Object> getDocuments(String index, Map<String, String> allParams) throws Exception {
 
         List<Object> resultList = new ArrayList<>();
+        QueryObject queryObject = new QueryObject(allParams);
+
+        String[] includeFields = queryObject.getFieldList() == null ? new String[] {"*"} : queryObject.getFieldList();
+        String[] excludeFields = new String[] {"_*"};
+
+        String searchKey = queryObject.getQueryKey();
+        String[] SearchValue = queryObject.getQueryValue();
+        boolean countOnly = queryObject.isCountonly();
+
+        System.out.println(queryObject.toString());
 
         SearchRequest searchRequest = new SearchRequest(index);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(QueryBuilders.matchAllQuery());
+
+        if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields);
+
         searchSourceBuilder.size(100);
+
         searchRequest.source(searchSourceBuilder);
         searchRequest.scroll(TimeValue.timeValueMinutes(1L));
 
@@ -55,21 +68,30 @@ public class IndexServiceImpl implements IndexService {
             SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
             String scrollId = searchResponse.getScrollId();
             SearchHits hits = searchResponse.getHits();
+            Long totalCount = hits.getTotalHits().value;
+
+            if (countOnly) {
+                Map<String,Long> map = new HashMap<String,Long>() {{put("Record Count", totalCount);}};
+                resultList.add(map);
+                return resultList;
+            }
+
             resultList.addAll(toDocumentList(hits.getHits()));
-            do {
+            if (resultList.size() < hits.getTotalHits().value) {
+                do {
 //                System.out.println(hits.getTotalHits().value);
 //                System.out.println(hits.getHits().length);
 //                System.out.println(scrollId);
 
-                SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId);
-                scrollRequest.scroll(TimeValue.timeValueSeconds(30));
-                SearchResponse searchScrollResponse = restHighLevelClient.scroll(scrollRequest, RequestOptions.DEFAULT);
-                scrollId = searchScrollResponse.getScrollId();
-                hits = searchScrollResponse.getHits();
-                resultList.addAll(toDocumentList(hits.getHits()));
+                    SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId);
+                    scrollRequest.scroll(TimeValue.timeValueSeconds(30));
+                    SearchResponse searchScrollResponse = restHighLevelClient.scroll(scrollRequest, RequestOptions.DEFAULT);
+                    scrollId = searchScrollResponse.getScrollId();
+                    hits = searchScrollResponse.getHits();
+                    resultList.addAll(toDocumentList(hits.getHits()));
 
-            } while (scrollId != null && hits.getHits().length != 0 );
-
+                } while (scrollId != null && hits.getHits().length != 0);
+            }
             ClearScrollRequest request = new ClearScrollRequest();
             request.addScrollId(scrollId);
             ClearScrollResponse response = restHighLevelClient.clearScroll(request, RequestOptions.DEFAULT);
