@@ -1,23 +1,24 @@
 package com.p7rox.esApi.controller.v1;
 
-import com.p7rox.esApi.service.product.SpringDataProductService;
+import com.p7rox.esApi.service.v1.IndexService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/v1")
 @RequiredArgsConstructor
 public class IndexController {
-    private final SpringDataProductService springDataProductService;
+    private final IndexService indexService;
 
-    @GetMapping("{index}")
-    public String getProductById(@PathVariable String index, @RequestParam Map<String,String> allParams) {
-        return "Index is "+ index + " and Parameters are " + allParams.entrySet();
+    @GetMapping(value="{index}", produces="application/json")
+    public List<Object> getProductById(@PathVariable String index, @RequestParam Map<String,String> allParams) throws Exception{
+        return indexService.getDocuments(index, allParams);
     }
 
-    @GetMapping("{index}/{id}")
+    @GetMapping(value="{index}/{id}", produces="application/json")
     public String getProductById(@PathVariable String index, @PathVariable String id) {
         return "Index is "+ index + " and ids is " + id;
     }
