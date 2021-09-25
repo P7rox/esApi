@@ -19,7 +19,7 @@ public class IndexController {
     }
 
     @GetMapping(value="{index}/{id}", produces="application/json")
-    public Object getProductById(@PathVariable String index, @PathVariable String id) {
+    public Object getProductById(@PathVariable String index, @PathVariable String id) throws Exception {
         return indexService.getDocument(index, id);
     }
 }
