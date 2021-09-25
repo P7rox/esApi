@@ -20,7 +20,7 @@ public class QueryObject {
     protected int offset;
     protected String[] fieldList;
     protected String[] sortList;
-    protected List<Map<String, String>> filterMap;
+    protected List<Map<String, String>> filterMap = new ArrayList<>();
     protected String queryKey = null;
     protected String[] queryValue = null;
     protected boolean countonly;
@@ -28,10 +28,10 @@ public class QueryObject {
 
     public QueryObject(final Map<String, String> params) throws Exception {
         String limitString = params.remove("limit");
-        this.limit = (limitString == null) ? 0 : Integer.valueOf(limitString);
+        this.limit = (limitString == null) ? 0 : Integer.parseInt(limitString);
 
         String offsetString = params.remove("offset");
-        this.offset = (offsetString == null) ? 0 : Integer.valueOf(offsetString);
+        this.offset = (offsetString == null) ? 0 : Integer.parseInt(offsetString);
 
         String fieldString = params.remove("fields");
         this.fieldList = (fieldString == null) ? null : fieldString.split(",");
@@ -40,7 +40,7 @@ public class QueryObject {
         this.sortList = (sortString == null) ? null : sortString.split("\\|");
 
         String countonlyString = params.remove("countonly");
-        this.countonly = (countonlyString == null) ? false : Boolean.valueOf(countonlyString);
+        this.countonly = Boolean.parseBoolean(countonlyString);
 
         if (!(this.sortList == null)) {
             throw new Exception("customised sort is not supported in this version");
@@ -48,7 +48,6 @@ public class QueryObject {
 
         String filterString = params.remove("filters");
         if (filterString != null) {
-            this.filterMap = new ArrayList<Map<String, String>>();
             formatFilterMap(filterString);
         }
 
@@ -80,9 +79,7 @@ public class QueryObject {
             }
             str = str.replace("(" + subFilter + ")", "");
             // System.out.println("str:" + str);
-            if (endIndex > 0) {
-                formatFilterMap(str);
-            }
+            formatFilterMap(str);
         } else {
             try {
                 this.filterMap.add(processSingleLevelFilter(filterString));
@@ -99,7 +96,7 @@ public class QueryObject {
         String[] filterList = (filterString == null) ? null : filterString.split("\\|");
 
         if (filterList != null) {
-            Map<String, String> singleFilterMap = new HashMap<String, String>();
+            Map<String, String> singleFilterMap = new HashMap<>();
             try {
                 for (String filter : filterList) {
                     if (filter.trim().length() > 0) {
