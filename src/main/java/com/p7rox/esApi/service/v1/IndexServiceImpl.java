@@ -23,7 +23,7 @@ public class IndexServiceImpl implements IndexService {
     private final RestHighLevelClient restHighLevelClient;
     private final ObjectMapper objectMapper;
 
-    public Object getDocument(String index, String id) {
+    public Object getDocument(String index, String id) throws Exception {
         SearchRequest searchRequest = new SearchRequest(index);
         SearchSourceBuilder sourceBuilder = SearchSourceBuilder.searchSource();
         IdsQueryBuilder idsQueryBuilder = QueryBuilders.idsQuery().addIds(id);
@@ -34,9 +34,8 @@ public class IndexServiceImpl implements IndexService {
             return toDocumentList(response.getHits().getHits()).stream().findFirst().orElse(null);
         } catch (Exception e) {
             e.printStackTrace();
+            throw e;
         }
-
-        return null;
     }
 
     public List<Object> getDocuments(String index, Map<String, String> allParams) throws Exception {
@@ -50,6 +49,7 @@ public class IndexServiceImpl implements IndexService {
         String searchKey = queryObject.getQueryKey();
         String[] SearchValue = queryObject.getQueryValue();
         boolean countOnly = queryObject.isCountonly();
+        int offset = queryObject.getOffset();
 
         System.out.println(queryObject.toString());
 
@@ -58,7 +58,7 @@ public class IndexServiceImpl implements IndexService {
         searchSourceBuilder.query(QueryBuilders.matchAllQuery());
 
         if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields);
-
+        if (offset > 0) searchSourceBuilder.from(offset);
         searchSourceBuilder.size(100);
 
         searchRequest.source(searchSourceBuilder);
@@ -94,14 +94,13 @@ public class IndexServiceImpl implements IndexService {
             }
             ClearScrollRequest request = new ClearScrollRequest();
             request.addScrollId(scrollId);
-            ClearScrollResponse response = restHighLevelClient.clearScroll(request, RequestOptions.DEFAULT);
-
+            ClearScrollResponse clearScrollResponse = restHighLevelClient.clearScroll(request, RequestOptions.DEFAULT);
+            boolean succeeded = clearScrollResponse.isSucceeded();
             return resultList;
         } catch (Exception e) {
             e.printStackTrace();
+            throw e;
         }
-
-        return null;
     }
 
     private List<Object> toDocumentList(SearchHit[] searchHits) throws Exception {
