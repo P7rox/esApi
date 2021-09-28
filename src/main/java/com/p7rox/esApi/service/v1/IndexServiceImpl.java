@@ -7,7 +7,9 @@ import org.elasticsearch.action.search.*;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.IdsQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
@@ -15,6 +17,7 @@ import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,16 +53,40 @@ public class IndexServiceImpl implements IndexService {
         String[] SearchValue = queryObject.getQueryValue();
         boolean countOnly = queryObject.isCountonly();
         int offset = queryObject.getOffset();
+        int limit = queryObject.getLimit();
+        List<Map<String, String>> filters = queryObject.getFilterMap();
+        String queryKey = queryObject.getQueryKey();
+        String[] queryValue = queryObject.getQueryValue();
 
+        System.out.println(filters.toString());
         System.out.println(queryObject.toString());
 
         SearchRequest searchRequest = new SearchRequest(index);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-        searchSourceBuilder.query(QueryBuilders.matchAllQuery());
 
-        if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields);
-        if (offset > 0) searchSourceBuilder.from(offset);
-        searchSourceBuilder.size(100);
+        BoolQueryBuilder query = QueryBuilders.boolQuery();
+
+        if (queryKey == null) query = query.must(QueryBuilders.matchAllQuery());
+                else query = query.must(QueryBuilders.termsQuery(queryKey, queryValue));
+
+        if (!filters.isEmpty()) {
+            for (Map<String, String> filterMap : filters)
+                for (Map.Entry<String,String> filter : filterMap.entrySet()) {
+//                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), filter.getValue()));
+                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), filter.getValue().split(",")));
+//                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), Arrays.asList(filter.getValue().split(","))));
+                    System.out.println("filter key: " + filter.getKey() + " and filter value: " + Arrays.asList(filter.getValue().split(",")));
+                }
+        }
+//        query = query.filter(QueryBuilders.termsQuery("ticket.inquiryType", "INQTYP01", "INQTYP06"))
+//                .filter(QueryBuilders.termsQuery("ticket.status", "NEW", "CLOSED"))
+//                .filter(QueryBuilders.termsQuery("ticket.ownership", "OWNED", "OTHER_OWNER"));
+
+        searchSourceBuilder.query(query); // Get all records QueryBuilders.matchAllQuery()
+
+        if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields); // CountOnly: Ignoring Source || Selective Fields
+//        if (offset > 0) searchSourceBuilder.from(offset); // Validation Failed: 1: using [from] is not allowed in a scroll context; ToDo: resolve scroll issue
+        if (limit > 0) searchSourceBuilder.size(limit); else searchSourceBuilder.size(100); //Limit Implementation
 
         searchRequest.source(searchSourceBuilder);
         searchRequest.scroll(TimeValue.timeValueMinutes(1L));
@@ -68,7 +95,7 @@ public class IndexServiceImpl implements IndexService {
             SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
             String scrollId = searchResponse.getScrollId();
             SearchHits hits = searchResponse.getHits();
-            Long totalCount = hits.getTotalHits().value;
+            Long totalCount = hits.getTotalHits().value < limit ? hits.getTotalHits().value : limit;
 
             if (countOnly) {
                 Map<String,Long> map = new HashMap<String,Long>() {{put("Record Count", totalCount);}};
@@ -96,7 +123,7 @@ public class IndexServiceImpl implements IndexService {
             request.addScrollId(scrollId);
             ClearScrollResponse clearScrollResponse = restHighLevelClient.clearScroll(request, RequestOptions.DEFAULT);
             boolean succeeded = clearScrollResponse.isSucceeded();
-            return resultList;
+            return (limit > 100 && limit%100 != 0 ) ? resultList.stream().limit(limit).collect(Collectors.toList()) : resultList;
         } catch (Exception e) {
             e.printStackTrace();
             throw e;
