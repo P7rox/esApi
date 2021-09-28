@@ -49,40 +49,16 @@ public class IndexServiceImpl implements IndexService {
         String[] includeFields = queryObject.getFieldList() == null ? new String[] {"*"} : queryObject.getFieldList();
         String[] excludeFields = new String[] {"_*"};
 
-        String searchKey = queryObject.getQueryKey();
-        String[] SearchValue = queryObject.getQueryValue();
+
         boolean countOnly = queryObject.isCountonly();
         int offset = queryObject.getOffset();
         int limit = queryObject.getLimit();
-        List<Map<String, String>> filters = queryObject.getFilterMap();
-        String queryKey = queryObject.getQueryKey();
-        String[] queryValue = queryObject.getQueryValue();
 
-        System.out.println(filters.toString());
-        System.out.println(queryObject.toString());
 
         SearchRequest searchRequest = new SearchRequest(index);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
 
-        BoolQueryBuilder query = QueryBuilders.boolQuery();
-
-        if (queryKey == null) query = query.must(QueryBuilders.matchAllQuery());
-                else query = query.must(QueryBuilders.termsQuery(queryKey, queryValue));
-
-        if (!filters.isEmpty()) {
-            for (Map<String, String> filterMap : filters)
-                for (Map.Entry<String,String> filter : filterMap.entrySet()) {
-//                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), filter.getValue()));
-                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), filter.getValue().split(",")));
-//                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), Arrays.asList(filter.getValue().split(","))));
-                    System.out.println("filter key: " + filter.getKey() + " and filter value: " + Arrays.asList(filter.getValue().split(",")));
-                }
-        }
-//        query = query.filter(QueryBuilders.termsQuery("ticket.inquiryType", "INQTYP01", "INQTYP06"))
-//                .filter(QueryBuilders.termsQuery("ticket.status", "NEW", "CLOSED"))
-//                .filter(QueryBuilders.termsQuery("ticket.ownership", "OWNED", "OTHER_OWNER"));
-
-        searchSourceBuilder.query(query); // Get all records QueryBuilders.matchAllQuery()
+        searchSourceBuilder.query(queryBuilder(queryObject));
 
         if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields); // CountOnly: Ignoring Source || Selective Fields
 //        if (offset > 0) searchSourceBuilder.from(offset); // Validation Failed: 1: using [from] is not allowed in a scroll context; ToDo: resolve scroll issue
@@ -136,5 +112,27 @@ public class IndexServiceImpl implements IndexService {
             stringList.add(searchHit.getSourceAsMap());
         }
         return stringList;
+    }
+
+    private BoolQueryBuilder queryBuilder (QueryObject queryObject) {
+        String searchKey = queryObject.getQueryKey();
+        String[] SearchValue = queryObject.getQueryValue();
+        List<Map<String, String>> filters = queryObject.getFilterMap();
+
+        BoolQueryBuilder query = QueryBuilders.boolQuery();
+
+        if (searchKey == null) query = query.must(QueryBuilders.matchAllQuery());  // Get all records QueryBuilders.matchAllQuery()
+        else query = query.must(QueryBuilders.termsQuery(searchKey, SearchValue));
+
+        if (!filters.isEmpty()) {
+            for (Map<String, String> filterMap : filters)
+                for (Map.Entry<String,String> filter : filterMap.entrySet()) {
+//                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), filter.getValue()));
+                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), filter.getValue().split(",")));
+//                    query = query.filter(QueryBuilders.termsQuery(filter.getKey(), Arrays.asList(filter.getValue().split(","))));
+                    System.out.println("filter key: " + filter.getKey() + " and filter value: " + Arrays.asList(filter.getValue().split(",")));
+                }
+        }
+        return query;
     }
 }
