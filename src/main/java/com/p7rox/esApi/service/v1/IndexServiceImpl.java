@@ -6,14 +6,14 @@ import lombok.RequiredArgsConstructor;
 import org.elasticsearch.action.search.*;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.IdsQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.sort.FieldSortBuilder;
+import org.elasticsearch.search.sort.SortOrder;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -27,13 +27,8 @@ public class IndexServiceImpl implements IndexService {
     private final ObjectMapper objectMapper;
 
     public Object getDocument(String index, String id) throws Exception {
-        SearchRequest searchRequest = new SearchRequest(index);
-        SearchSourceBuilder sourceBuilder = SearchSourceBuilder.searchSource();
-        IdsQueryBuilder idsQueryBuilder = QueryBuilders.idsQuery().addIds(id);
-        sourceBuilder.query(idsQueryBuilder);
-        searchRequest.source(sourceBuilder);
         try {
-            SearchResponse response = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
+            SearchResponse response = restHighLevelClient.search(buildRequest(index, id), RequestOptions.DEFAULT);
             return toDocumentList(response.getHits().getHits()).stream().findFirst().orElse(null);
         } catch (Exception e) {
             e.printStackTrace();
@@ -46,30 +41,11 @@ public class IndexServiceImpl implements IndexService {
         List<Object> resultList = new ArrayList<>();
         QueryObject queryObject = new QueryObject(allParams);
 
-        String[] includeFields = queryObject.getFieldList() == null ? new String[] {"*"} : queryObject.getFieldList();
-        String[] excludeFields = new String[] {"_*"};
-
-
         boolean countOnly = queryObject.isCountonly();
-        int offset = queryObject.getOffset();
         int limit = queryObject.getLimit();
 
-
-        SearchRequest searchRequest = new SearchRequest(index);
-        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-
-        searchSourceBuilder.query(queryBuilder(queryObject));
-
-        if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields); // CountOnly: Ignoring Source || Selective Fields
-//        if (offset > 0) searchSourceBuilder.from(offset); // Validation Failed: 1: using [from] is not allowed in a scroll context; ToDo: resolve scroll issue
-        if (limit > 0) searchSourceBuilder.size(limit); else searchSourceBuilder.size(100); //Limit Implementation
-
-        searchRequest.source(searchSourceBuilder);
-        searchRequest.scroll(TimeValue.timeValueMinutes(1L));
-
         try {
-            SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
-            String scrollId = searchResponse.getScrollId();
+            SearchResponse searchResponse = restHighLevelClient.search(buildRequestWithOffset(index, queryObject), RequestOptions.DEFAULT);
             SearchHits hits = searchResponse.getHits();
             Long totalCount = hits.getTotalHits().value < limit ? hits.getTotalHits().value : limit;
 
@@ -80,25 +56,15 @@ public class IndexServiceImpl implements IndexService {
             }
 
             resultList.addAll(toDocumentList(hits.getHits()));
+
             if (resultList.size() < hits.getTotalHits().value) {
                 do {
-//                System.out.println(hits.getTotalHits().value);
-//                System.out.println(hits.getHits().length);
-//                System.out.println(scrollId);
-
-                    SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId);
-                    scrollRequest.scroll(TimeValue.timeValueSeconds(30));
-                    SearchResponse searchScrollResponse = restHighLevelClient.scroll(scrollRequest, RequestOptions.DEFAULT);
-                    scrollId = searchScrollResponse.getScrollId();
+                    SearchResponse searchScrollResponse = restHighLevelClient.search(buildRequestWithSearchAfter(index, queryObject, hits.getAt(hits.getHits().length - 1).getSortValues()), RequestOptions.DEFAULT);
                     hits = searchScrollResponse.getHits();
                     resultList.addAll(toDocumentList(hits.getHits()));
-
-                } while (scrollId != null && hits.getHits().length != 0);
+                } while (hits.getHits().length != 0);
             }
-            ClearScrollRequest request = new ClearScrollRequest();
-            request.addScrollId(scrollId);
-            ClearScrollResponse clearScrollResponse = restHighLevelClient.clearScroll(request, RequestOptions.DEFAULT);
-            boolean succeeded = clearScrollResponse.isSucceeded();
+
             return (limit > 100 && limit%100 != 0 ) ? resultList.stream().limit(limit).collect(Collectors.toList()) : resultList;
         } catch (Exception e) {
             e.printStackTrace();
@@ -134,5 +100,60 @@ public class IndexServiceImpl implements IndexService {
                 }
         }
         return query;
+    }
+
+    private SearchSourceBuilder sourceBuilder(String id) {
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        IdsQueryBuilder idsQueryBuilder = QueryBuilders.idsQuery().addIds(id);
+        searchSourceBuilder.query(idsQueryBuilder);
+        return searchSourceBuilder;
+    }
+
+    private SearchSourceBuilder sourceBuilder(QueryObject queryObject) {
+        String[] includeFields = queryObject.getFieldList() == null ? new String[] {"*"} : queryObject.getFieldList();
+        String[] excludeFields = new String[] {"_*"};
+        boolean countOnly = queryObject.isCountonly();
+        int limit = queryObject.getLimit();
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+
+        searchSourceBuilder.query(queryBuilder(queryObject));
+
+        if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields); // CountOnly: Ignoring Source || Selective Fields
+        if (limit > 0) searchSourceBuilder.size(limit); else searchSourceBuilder.size(100); //Limit Implementation
+
+        return searchSourceBuilder;
+    }
+
+    private SearchSourceBuilder sourceBuilderWithSort (SearchSourceBuilder searchSourceBuilder, QueryObject queryObject) {
+        String[] sortList = queryObject.getSortList();
+        searchSourceBuilder.sort(new FieldSortBuilder("_id").order(SortOrder.ASC));
+        return searchSourceBuilder;
+    }
+
+    private SearchSourceBuilder sourceBuilderWithOffset (SearchSourceBuilder searchSourceBuilder, QueryObject queryObject) {
+        int offset = queryObject.getOffset();
+        if (offset > 0) searchSourceBuilder.from(offset);
+        return searchSourceBuilder;
+    }
+
+    private SearchSourceBuilder sourceBuilderWithSearchAfter (SearchSourceBuilder searchSourceBuilder, Object[] searchAfterSortValues) {
+        searchSourceBuilder.searchAfter(searchAfterSortValues);
+        return searchSourceBuilder;
+    }
+
+    private SearchRequest buildRequest(String index, String id) {
+        return new SearchRequest(index).source(sourceBuilder(id));
+    }
+
+    private SearchRequest buildRequest(String index, QueryObject queryObject) {
+        return new SearchRequest(index).source(sourceBuilder(queryObject));
+    }
+
+    private SearchRequest buildRequestWithOffset(String index, QueryObject queryObject) {
+        return new SearchRequest(index).source(sourceBuilderWithOffset(sourceBuilderWithSort(sourceBuilder(queryObject), queryObject), queryObject));
+    }
+
+    private SearchRequest buildRequestWithSearchAfter(String index, QueryObject queryObject, Object[] searchAfterSortValues) {
+        return new SearchRequest(index).source(sourceBuilderWithSearchAfter(sourceBuilderWithSort(sourceBuilder(queryObject), queryObject), searchAfterSortValues));
     }
 }
