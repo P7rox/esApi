@@ -2,6 +2,7 @@ package com.p7rox.esApi.utils;
 
 
 import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
 
 import java.util.ArrayList;
@@ -15,7 +16,7 @@ import java.util.Map.Entry;
 @ToString
 @Getter
 public class QueryObject {
-
+    @Setter
     protected int limit;
     protected int offset;
     protected String[] fieldList;
