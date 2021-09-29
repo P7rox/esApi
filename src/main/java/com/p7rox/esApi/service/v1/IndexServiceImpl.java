@@ -1,11 +1,12 @@
 package com.p7rox.esApi.service.v1;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.p7rox.esApi.utils.QueryObject;
 import lombok.RequiredArgsConstructor;
 import org.elasticsearch.action.search.*;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.client.core.CountRequest;
+import org.elasticsearch.client.core.CountResponse;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.IdsQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
@@ -17,14 +18,13 @@ import org.elasticsearch.search.sort.SortOrder;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class IndexServiceImpl implements IndexService {
 
     private final RestHighLevelClient restHighLevelClient;
-    private final ObjectMapper objectMapper;
+    private final int querySearchSize = 100;
 
     public Object getDocument(String index, String id) throws Exception {
         try {
@@ -45,34 +45,38 @@ public class IndexServiceImpl implements IndexService {
         int limit = queryObject.getLimit();
 
         try {
-            SearchResponse searchResponse = restHighLevelClient.search(buildRequestWithOffset(index, queryObject), RequestOptions.DEFAULT);
-            SearchHits hits = searchResponse.getHits();
-            Long totalCount = hits.getTotalHits().value < limit ? hits.getTotalHits().value : limit;
-
             if (countOnly) {
-                Map<String,Long> map = new HashMap<String,Long>() {{put("Record Count", totalCount);}};
+                CountResponse countResponse = restHighLevelClient.count(buildCountRequest(index, queryObject), RequestOptions.DEFAULT);
+                long count = countResponse.getCount();
+                Map<String, Long> map = new HashMap<>() {{
+                    put("Record Count", count);
+                }};
                 resultList.add(map);
-                return resultList;
+            } else {
+                SearchResponse searchResponse = restHighLevelClient.search(buildRequestWithOffset(index, queryObject), RequestOptions.DEFAULT);
+                SearchHits hits = searchResponse.getHits();
+
+
+                resultList.addAll(toDocumentList(hits.getHits()));
+
+                if (resultList.size() < hits.getTotalHits().value && (limit > querySearchSize || limit ==0)) {
+                    do {
+                        if(queryObject.getLimit() > querySearchSize) queryObject.setLimit(queryObject.getLimit()-querySearchSize);
+                        SearchResponse searchAfterResponse = restHighLevelClient.search(buildRequestWithSearchAfter(index, queryObject, hits.getAt(hits.getHits().length - 1).getSortValues()), RequestOptions.DEFAULT);
+                        hits = searchAfterResponse.getHits();
+                        resultList.addAll(toDocumentList(hits.getHits()));
+                    } while (hits.getHits().length != 0 && (resultList.size() < limit || limit ==0));
+                }
+
             }
-
-            resultList.addAll(toDocumentList(hits.getHits()));
-
-            if (resultList.size() < hits.getTotalHits().value) {
-                do {
-                    SearchResponse searchScrollResponse = restHighLevelClient.search(buildRequestWithSearchAfter(index, queryObject, hits.getAt(hits.getHits().length - 1).getSortValues()), RequestOptions.DEFAULT);
-                    hits = searchScrollResponse.getHits();
-                    resultList.addAll(toDocumentList(hits.getHits()));
-                } while (hits.getHits().length != 0);
-            }
-
-            return (limit > 100 && limit%100 != 0 ) ? resultList.stream().limit(limit).collect(Collectors.toList()) : resultList;
+            return resultList;
         } catch (Exception e) {
             e.printStackTrace();
             throw e;
         }
     }
 
-    private List<Object> toDocumentList(SearchHit[] searchHits) throws Exception {
+    private List<Object> toDocumentList(SearchHit[] searchHits) {
         List<Object> stringList = new ArrayList<>();
         for (SearchHit searchHit : searchHits) {
             stringList.add(searchHit.getSourceAsMap());
@@ -119,13 +123,13 @@ public class IndexServiceImpl implements IndexService {
         searchSourceBuilder.query(queryBuilder(queryObject));
 
         if (countOnly) searchSourceBuilder.fetchSource(false); else searchSourceBuilder.fetchSource(includeFields, excludeFields); // CountOnly: Ignoring Source || Selective Fields
-        if (limit > 0) searchSourceBuilder.size(limit); else searchSourceBuilder.size(100); //Limit Implementation
+        if (limit < querySearchSize && limit !=0) searchSourceBuilder.size(limit); else searchSourceBuilder.size(querySearchSize); //Limit Implementation
 
         return searchSourceBuilder;
     }
 
     private SearchSourceBuilder sourceBuilderWithSort (SearchSourceBuilder searchSourceBuilder, QueryObject queryObject) {
-        String[] sortList = queryObject.getSortList();
+//        String[] sortList = queryObject.getSortList(); // sort not implemented also not required
         searchSourceBuilder.sort(new FieldSortBuilder("_id").order(SortOrder.ASC));
         return searchSourceBuilder;
     }
@@ -145,8 +149,8 @@ public class IndexServiceImpl implements IndexService {
         return new SearchRequest(index).source(sourceBuilder(id));
     }
 
-    private SearchRequest buildRequest(String index, QueryObject queryObject) {
-        return new SearchRequest(index).source(sourceBuilder(queryObject));
+    private CountRequest buildCountRequest(String index, QueryObject queryObject) {
+        return new CountRequest(index).source(sourceBuilderWithOffset(sourceBuilder(queryObject), queryObject));
     }
 
     private SearchRequest buildRequestWithOffset(String index, QueryObject queryObject) {
